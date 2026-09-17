@@ -1,0 +1,8 @@
+## Important phone tip
+
+Do not try to create every file from your phone immediately. Create these first:
+
+```text
+README.md
+.gitignore
+LICENSE
