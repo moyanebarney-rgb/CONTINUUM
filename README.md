@@ -11,3 +11,20 @@ The project asks:
 
 > Can financial state remain continuous, verifiable, and reproducible
 > across change, failure, and recovery?
+
+## Architecture
+
+```text
+Financial invariants
+        ↓
+Transaction safety
+        ↓
+Persistent state
+        ↓
+Migration equivalence
+        ↓
+Independent reconciliation
+        ↓
+Evidence integrity
+        ↓
+Runtime recovery
