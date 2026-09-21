@@ -1,0 +1,7 @@
+check_id,description,expected,actual,status
+F1-001,account created,True,True,PASS
+F1-002,deposit succeeds,True,True,PASS
+F1-003,balance after deposit (cents),125000,125000,PASS
+F1-004,ledger count after deposit,1,1,PASS
+F1-005,reconciliation passes,True,True,PASS
+F1-006,schema version,2,2,PASS
