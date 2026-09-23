@@ -1,0 +1,8 @@
+check_id,description,expected,actual,status
+F5-001,deposit rejected on frozen account,False,False,PASS
+F5-002,withdrawal rejected on frozen account,False,False,PASS
+F5-003,transfer rejected on frozen account,False,False,PASS
+F5-004,frozen account balance unchanged,100000,100000,PASS
+F5-005,other account balance unchanged,50000,50000,PASS
+F5-006,ledger count unchanged,0,0,PASS
+F5-007,reconciliation passes,True,True,PASS
