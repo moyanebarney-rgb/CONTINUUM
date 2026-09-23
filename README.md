@@ -89,7 +89,8 @@ the repository can rebuild it and verify the seal:
 
 ```bash
 python build_day5_aggregate.py
-sha256sum -c evidence/day5/day5_results.csv.sha256
+cd evidence/day5
+sha256sum -c day5_results.csv.sha256
 ```
 
 Expected output:
