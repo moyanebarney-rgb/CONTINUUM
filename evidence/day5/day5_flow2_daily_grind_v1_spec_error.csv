@@ -1,0 +1,7 @@
+check_id,description,expected,actual,status
+F2-001,after salary deposit,250000,250000,PASS
+F2-002,after groceries,245000,245000,PASS
+F2-003,after refund,246000,255000,FAIL
+F2-004,after utilities,244000,240000,FAIL
+F2-005,ledger count,4,4,PASS
+F2-006,reconciliation passes,True,True,PASS
