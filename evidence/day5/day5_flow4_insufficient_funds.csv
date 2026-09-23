@@ -1,0 +1,6 @@
+check_id,description,expected,actual,status
+F4-001,withdrawal rejected,False,False,PASS
+F4-002,balance unchanged,50000,50000,PASS
+F4-003,ledger count unchanged,0,0,PASS
+F4-004,reconciliation passes,True,True,PASS
+F4-005,system total unchanged,50000,50000,PASS
