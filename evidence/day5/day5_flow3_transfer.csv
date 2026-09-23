@@ -1,0 +1,7 @@
+check_id,description,expected,actual,status
+F3-001,transfer succeeds,True,True,PASS
+F3-002,sender balance after transfer,75000,75000,PASS
+F3-003,receiver balance after transfer,75000,75000,PASS
+F3-004,system total preserved (dA + dB = 0),150000,150000,PASS
+F3-005,ledger count (Transfer Out + In),2,2,PASS
+F3-006,reconciliation passes,True,True,PASS
