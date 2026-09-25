@@ -1,12 +1,14 @@
-# 03 — Technical Notes
+## External vs internal identifiers
 
-## Ledger row semantics (verified by F1-004)
+- Internal `id` will be the canonical ledger key (immutable UUID).
+- External identifiers will be stored separately for reconciliation and tracing.
+- External identifiers must never serve as ledger primary keys.
+- Constraint scope varies per identifier — see `DECISIONS.md`.
 
-- create_account → 0 ledger rows
-- deposit        → 1 ledger row
-- withdraw       → 1 ledger row
-- transfer       → 2 ledger rows (Transfer Out + Transfer In)
+Source: Shashank Chaudhary, 2026-09-25.
 
-Any test asserting ledger count must account for this.
+## Monetary representation invariant
 
-Verified: 2026-09-22, from evidence/day5/day5_flow1_happy_path.csv
+Current implementation stores amounts as integer cents (`get_balance_cents()`).
+Any schema change must preserve this. `REAL`/floating-point amounts are not
+acceptable in the ledger.
