@@ -1,6 +1,6 @@
-CONTiNUUM
+# CONTiNUUM
 
-Financial state & transaction integrity
+*Financial state & transaction integrity*
 
 CONTiNUUM is a reproducible financial state system designed to demonstrate
 transactional integrity, exact monetary representation, independent
@@ -9,10 +9,10 @@ and runtime recovery.
 
 The project asks:
 
-Can financial state remain continuous, verifiable, and reproducible
-across change, failure, and recovery?
+> Can financial state remain continuous, verifiable, and reproducible
+> across change, failure, and recovery?
 
-Architecture
+## Architecture
 
 ```text
 Financial invariants
@@ -30,7 +30,7 @@ Evidence integrity
 Runtime recovery
 ```
 
-Status
+## Status
 
 ```text
 Flow 1:    Happy path                          ✅ complete
@@ -41,26 +41,27 @@ Flow 5:    Frozen account                      ✅ complete
 Aggregate: 30/30 checks PASS                   ✅ reproducible + sealed
 ```
 
-Four Gates
+## Four Gates
 
-Gate Test Status
-Failure Injected/rejected ops leave no partial state ✅ 30/30 (flows 1–5)
-Evidence Verified result → artifact → SHA-256 ✅ clean-clone verified
-Migration Old → New → Independent reconciliation ⏳ pending
-Recovery Execute → Destroy → Reconstruct → Two-level compare ⏳ pending
+| Gate | Test | Status |
+|---|---|---|
+| Failure | Injected/rejected ops leave no partial state | ✅ 30/30 (flows 1–5) |
+| Evidence | Verified result → artifact → SHA-256 | ✅ clean-clone verified |
+| Migration | Old → New → Independent reconciliation | ⏳ pending |
+| Recovery | Execute → Destroy → Reconstruct → Two-level compare | ⏳ pending |
 
-Key Properties
+## Key Properties
 
-· Integer cents as source of truth. No floating-point money.
-· BEGIN IMMEDIATE for atomic transfers.
-· Append-only ledger. Balances derived, never edited.
-· Startup reconciliation: Opening + Σ Ledger = Closing.
-· Schema versioning for migration history.
-· Hashed evidence for tamper-evident artifacts.
+- Integer cents as source of truth. No floating-point money.
+- `BEGIN IMMEDIATE` for atomic transfers.
+- Append-only ledger. Balances derived, never edited.
+- Startup reconciliation: `Opening + Σ Ledger = Closing`.
+- Schema versioning for migration history.
+- Hashed evidence for tamper-evident artifacts.
 
-Evidence
+## Evidence
 
-Flow-level evidence is committed under evidence/day5/:
+Flow-level evidence is committed under `evidence/day5/`:
 
 ```text
 evidence/day5/
@@ -74,8 +75,8 @@ evidence/day5/
 └── day5_results.csv.sha256
 ```
 
-day5_results.csv itself is not committed. It is regenerated on demand by
-build_day5_aggregate.py and verified against the committed sidecar.
+`day5_results.csv` itself is not committed. It is regenerated on demand by
+`build_day5_aggregate.py` and verified against the committed sidecar.
 
 Aggregate fingerprint:
 
@@ -83,7 +84,7 @@ Aggregate fingerprint:
 17d0972e5b0035cc6f6c754d25985d2be87f815c92c5d762979ac3cd374f6321
 ```
 
-Reproducibility
+### Reproducibility
 
 The aggregate is regenerable from the committed flow files. Anyone cloning
 the repository can rebuild it and verify the seal:
@@ -102,31 +103,30 @@ sha256:       17d0972e5b0035cc6f6c754d25985d2be87f815c92c5d762979ac3cd374f6321
 day5_results.csv: OK
 ```
 
-The original aggregate was generated once during a Colab session and
-committed only as a SHA-256 sidecar before the runtime reset. On recovery,
-the aggregate was regenerated from the five committed flow files. The
-regenerated digest matched the committed sidecar byte-for-byte,
-demonstrating that the evidence chain is intact end-to-end and the
-aggregate is derivable from committed inputs, not merely archival.
+The original aggregate was generated during a Colab session and committed
+only as a SHA-256 sidecar before the runtime reset. The aggregate was later
+regenerated from the five committed flow files, and the regenerated digest
+matched the committed sidecar. A clean clone can therefore reproduce and
+verify the aggregate from committed inputs rather than relying on an
+archival copy.
 
-Documentation
+## Documentation
 
-· ARCHITECTURE.md
-· DECISIONS.md
-· RECOVERY.md
-· TECHNICAL_NOTES.md
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [DECISIONS.md](docs/DECISIONS.md)
+- [RECOVERY.md](docs/RECOVERY.md)
+- [TECHNICAL_NOTES.md](docs/TECHNICAL_NOTES.md)
 
-Boundaries
+## Boundaries
 
-This project does not claim:
+This project does **not** claim:
 
-· Distributed exactly-once processing
-· Multi-node consistency
-· Production disaster recovery
-· Regulatory compliance
-· High-scale performance
+- Distributed exactly-once processing
+- Multi-node consistency
+- Production disaster recovery
+- Regulatory compliance
+- High-scale performance
 
-License
+## License
 
 MIT
-
