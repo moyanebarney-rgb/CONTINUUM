@@ -97,3 +97,45 @@ not just the output.
   inputs and verify the hash independently.
 - The evidence chain is reproducible, not merely archival.
 - A missing aggregate is recoverable, not fatal.
+
+## ADR-007 — External payment identifiers are not ledger keys
+
+**Context:** Payment schemes issue multiple identifiers (EndToEndId, UETR,
+TxId, SchemeTxId). Each is scoped differently. Treating any of them as
+the ledger's primary key assumes a uniqueness guarantee the scheme may
+not provide — globally, per scheme, or per settlement window — and risks
+collisions when the ledger spans more than one scheme.
+
+**Decision:** The ledger's primary key is an internal immutable UUID.
+External payment identifiers are stored separately for reconciliation,
+tracing, and duplicate detection. Their uniqueness constraints will be
+defined only after the target payment scheme and identifier guarantees
+are confirmed; they must not serve as ledger primary keys.
+
+**Consequences:**
+
+- Ledger identity is independent of any particular bank, scheme, or
+  settlement lifecycle.
+- Constraint scope for each external identifier must be confirmed against
+  the target payment scheme before the migration is implemented.
+- The integer-cents invariant (ADR-001) continues to apply — external
+  identifier work does not touch monetary storage.
+- Implementation is deferred. Current `bank_ledger.py` and Day 5 evidence
+  remain valid for the existing ledger scope.
+
+**Source:** Shashank Chaudhary, 2026-09-25.
+
+**Pending before implementation:**
+
+- Confirm target payment scheme.
+- Confirm EndToEndId uniqueness scope (global / per-scheme / per-settlement-window).
+- Confirm whether TxId and SchemeTxId require institution or scheme in
+  their composite constraint.
+- Provisional uniqueness possibilities to evaluate once the scheme is
+  confirmed: `UNIQUE(uetr)`, `UNIQUE(end_to_end_id)`,
+  `UNIQUE(end_to_end_id, scheme)`,
+  `UNIQUE(end_to_end_id, scheme, settlement_date)`. None are final.
+- Reconcile against ADR-001: amounts must remain integer cents. The
+  schema sketch from 2026-09-25 used `REAL` amounts and is
+  non-conformant — do not implement as sketched.
+- Bump `schema_version` to 3 per ADR-004 when implemented.
