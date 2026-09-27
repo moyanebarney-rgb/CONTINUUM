@@ -125,7 +125,10 @@ This project does **not** claim:
 - Multi-node consistency
 - Production disaster recovery
 - Regulatory compliance
-- High-scale performance
+
+Correctness was verified at fixture scale: 3 accounts, 6 ledger rows,
+30 test checks. No performance characterization at any other scale is
+claimed or implied.
 
 ## License
 
