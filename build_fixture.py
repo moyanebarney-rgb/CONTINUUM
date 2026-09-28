@@ -47,6 +47,16 @@ for acc, amt, typ, rel, desc in [
                  " VALUES (?,?,?,?,?,?)",
                  (acc, amt, typ, rel, now, desc))
 
+# Enforce invariant: balance = opening_balance + SUM(ledger.amount)
+conn.execute("""
+    UPDATE accounts
+    SET balance = opening_balance + COALESCE(
+        (SELECT SUM(amount) FROM ledger
+         WHERE ledger.account_id = accounts.account_id),
+        0
+    )
+""")
+
 conn.commit()
 conn.close()
 print("Fixture:", FIXTURE)
