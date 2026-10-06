@@ -1,0 +1,13 @@
+check_id,description,expected,actual,status
+MIG-STR,structural: tables present,True,True,PASS
+MIG-TYP,balance column is INTEGER,integer,integer,PASS
+MIG-ACC,account count,3,3,PASS
+MIG-LGR,ledger count,6,6,PASS
+MIG-ACC-A,convert ACC-A,225000,225000,PASS
+MIG-ACC-B,convert ACC-B,100000,100000,PASS
+MIG-ACC-C,convert ACC-C,0,0,PASS
+MIG-TOT,total value (cents),325000,325000,PASS
+REC-ACC-A,reconcile ACC-A,225000,225000,PASS
+REC-ACC-B,reconcile ACC-B,100000,100000,PASS
+REC-ACC-C,reconcile ACC-C,0,0,PASS
+MIG-SCH,schema version,2,2,PASS
