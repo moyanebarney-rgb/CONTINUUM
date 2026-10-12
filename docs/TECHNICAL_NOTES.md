@@ -48,6 +48,34 @@ a `UNIQUE(adjustment_id)` constraint.
 
 Source: Ndimphiwe Bontsi, 2026-09-29.
 
+## Recovery validation priority
+
+Verified 2026-10-12 from Bank Ledger outreach.
+
+Two layers of recovery validation:
+
+1. **Technical** — committed transactions recovered accurately
+   (artifact-level check)
+2. **Financial** — reconciliation across the system
+
+Priority: **financial reconciliation > artifact validation.**
+
+Byte-identical artifact recovery confirms reproducibility, but does not
+prove that all transactions were processed and accounted for correctly.
+A successful recovery does not imply the financials balance.
+
+Adopted in the Recovery drill design: Level 2 (internal reconciliation)
+is the primary gate; Level 1 (byte-identical artifacts) is a diagnostic
+checkpoint. A Recovery pass requires Level 2 to pass.
+
+**Out of scope for CONTINUUM:** alignment across authorisation, clearing,
+and settlement. CONTINUUM has no clearing or settlement layer. That
+full-chain reconciliation is a target for a future extension, not for
+the current drill.
+
+Source: Taufeeq Jonkers, Payment Engineer, Postilion & SQL Specialist,
+2026-10-12.
+
 ## Monetary representation invariant
 
 Current implementation stores amounts as integer cents (`get_balance_cents()`).
