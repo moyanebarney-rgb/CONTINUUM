@@ -27,7 +27,9 @@ error in Flow 2's initial specification came from assuming
 - External identifiers must never serve as ledger primary keys.
 - Constraint scope varies per identifier — see `DECISIONS.md` ADR-007.
 
-Source: Shashank Chaudhary, 2026-09-25.
+Source: Shashank Chaudhary — Lead Java Engineer, MultiChoice Group.
+Core Java, API design, system design, backend integration, technical
+lead track. 13+ years building backend systems. 2026-09-25.
 
 ## Correction mechanism
 
@@ -46,7 +48,15 @@ of the same correction.
 Aligns with ADR-003 (append-only ledger). The correction table must carry
 a `UNIQUE(adjustment_id)` constraint.
 
-Source: Ndimphiwe Bontsi, 2026-09-29.
+Source: Ndimphiwe Bontsi — Senior Software Engineer (Java 21 & Spring
+Boot), Microservices & Event-Driven Architecture, Payment Systems;
+Founder, Decoded Solutions. Works on payment integrations and
+reconciliation workflows. 2026-09-29.
+
+**Role correction note:** previously logged as "Cloud Architect." His
+current role and stated experience are in payment system engineering and
+reconciliation workflows, which directly grounds the correction-mechanism
+input. The mislabeling is corrected here and in the outreach log.
 
 ## Recovery validation priority
 
@@ -73,7 +83,7 @@ and settlement. CONTINUUM has no clearing or settlement layer. That
 full-chain reconciliation is a target for a future extension, not for
 the current drill.
 
-Source: Taufeeq Jonkers, Payment Engineer, Postilion & SQL Specialist,
+Source: Taufeeq Jonkers — Payment Engineer, Postilion & SQL Specialist.
 2026-10-12.
 
 ## Monetary representation invariant
@@ -81,3 +91,38 @@ Source: Taufeeq Jonkers, Payment Engineer, Postilion & SQL Specialist,
 Current implementation stores amounts as integer cents (`get_balance_cents()`).
 Any schema change must preserve this. `REAL`/floating-point amounts are not
 acceptable in the ledger. See `DECISIONS.md` ADR-001.
+
+## Generator reproducibility check
+
+Status: Investigation pending.
+Date opened: 2026-10-14.
+
+### Method
+
+In a disposable fresh clone, remove the generated output, run the
+generator, and compare the regenerated SHA-256 with the committed
+sidecar. Code inspection is a supporting check, not a substitute.
+
+### Record
+
+- Git commit tested: _______
+- Generated output path: _______
+- Generator command: _______
+- Generator exit status: _______
+- Expected SHA-256: _______
+- Observed SHA-256: _______
+- Environment (Python / SQLite / Pandas): _______
+
+### Result
+
+Investigation pending — execution evidence not yet recorded.
+
+### Scope
+
+A successful regeneration with a matching hash supports Claim A for
+the tested artifact, commit, and environment. It does not establish
+reproducibility for untested artifacts or environments.
+
+Code inspection and grep are supporting checks, not substitutes for
+regeneration and comparison. Grep heuristics miss pathlib, try/except
+read-or-build, and argument-flag short-circuits.
