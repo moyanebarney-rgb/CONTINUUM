@@ -1,34 +1,75 @@
 import os
+import shutil
+import sqlite3
+import tempfile
+import subprocess
 
-# 1. Create a dummy destination file to simulate existing state
-with open("banking.db", "w") as f: 
-    f.write("ORIGINAL_VALID_STATE")
+def setup_fixture(fixture_path):
+    # Create a dummy source DB
+    os.makedirs(os.path.dirname(fixture_path), exist_ok=True)
+    conn = sqlite3.connect(fixture_path)
+    conn.execute("CREATE TABLE accounts (account_id TEXT, balance REAL, status TEXT, opening_balance REAL, customer_id TEXT, created_at TEXT)")
+    conn.execute("INSERT INTO accounts VALUES ('ACC-A', 1000.00, 'Active', 1000.00, 'C1', '2026-01-01')")
+    conn.execute("CREATE TABLE ledger (tx_id INTEGER, account_id TEXT, amount REAL, type TEXT, related_account_id TEXT, timestamp TEXT, description TEXT)")
+    conn.commit()
+    conn.close()
 
-# 2. Hide the source to simulate a missing file
-os.rename("fixtures/pre_migration.db", "fixtures/pre_migration.db.hidden")
+def run_tests():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        print(f"Running isolated tests in {tmpdir}")
+        
+        # Setup paths inside the sandbox
+        src_path = os.path.join(tmpdir, "fixtures", "pre_migration.db")
+        dst_path = os.path.join(tmpdir, "banking.db")
+        script_path = os.path.abspath("migrate_to_cents.py") # Use actual script
+        
+        # Create dummy source
+        setup_fixture(src_path)
+        
+        # Create dummy destination to represent "Original Valid State"
+        with open(dst_path, "w") as f:
+            f.write("ORIGINAL_VALID_STATE")
 
-try:
-    # 3. Attempt migration
-    from migrate_to_cents import run_migration
-    run_migration()
-except FileNotFoundError as e:
-    print(f"✅ Migration failed as expected: {e}")
-except Exception as e:
-    print(f"❌ Unexpected error: {e}")
+        env = os.environ.copy()
+        env["MIG_SRC"] = src_path
+        env["MIG_DST"] = dst_path
+        env["MIG_TMP"] = os.path.join(tmpdir, "banking.db.tmp")
+        env["MIG_BAK"] = os.path.join(tmpdir, "fixtures", "backup.db")
 
-# 4. Verify the original destination is untouched
-with open("banking.db", "r") as f:
-    content = f.read()
-    if content == "ORIGINAL_VALID_STATE":
+        # --- TEST 1: Missing Source (Pre-migration failure) ---
+        print("\n--- Test 1: Pre-migration failure (Missing Source) ---")
+        os.rename(src_path, src_path + ".hidden")
+        
+        result = subprocess.run(["python", script_path], env=env, capture_output=True, text=True)
+        
+        assert result.returncode != 0, "Expected failure, but script succeeded"
+        assert "Source database not found" in result.stderr, "Did not catch missing source"
+        
+        with open(dst_path, "r") as f:
+            assert f.read() == "ORIGINAL_VALID_STATE", "FAIL: Destination was destroyed!"
         print("✅ PASS: Original destination preserved.")
-    else:
-        print("❌ FAIL: Destination was corrupted or overwritten.")
+        
+        # Restore source
+        os.rename(src_path + ".hidden", src_path)
 
-# 5. Verify temp file was cleaned up
-if os.path.exists("banking.db.tmp"):
-    print("❌ FAIL: Temporary database file was not cleaned up.")
-else:
-    print("✅ PASS: Temporary file cleaned up.")
+        # --- TEST 2: Mid-migration failure (Invalid Data) ---
+        print("\n--- Test 2: Mid-migration failure (Corrupt Source Data) ---")
+        # Inject a sub-cent value into the source to trigger a failure during processing
+        conn = sqlite3.connect(src_path)
+        conn.execute("INSERT INTO accounts VALUES ('ACC-B', 10.005, 'Active', 10.005, 'C2', '2026-01-01')")
+        conn.commit()
+        conn.close()
 
-# 6. Clean up
-os.rename("fixtures/pre_migration.db.hidden", "fixtures/pre_migration.db")
+        result = subprocess.run(["python", script_path], env=env, capture_output=True, text=True)
+        
+        assert result.returncode != 0, "Expected failure, but script succeeded"
+        assert "Sub-cent value detected" in result.stderr, "Did not catch sub-cent value"
+        
+        with open(dst_path, "r") as f:
+            assert f.read() == "ORIGINAL_VALID_STATE", "FAIL: Destination was modified or destroyed!"
+        
+        assert not os.path.exists(env["MIG_TMP"]), "FAIL: Temporary file was not cleaned up."
+        print("✅ PASS: Original destination preserved and temp file cleaned up.")
+
+if __name__ == "__main__":
+    run_tests()
