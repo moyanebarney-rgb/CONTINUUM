@@ -1,8 +1,7 @@
-import sqlite3, os, shutil
+import sqlite3, os, shutil, sys
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
-# Allow overriding paths for isolated testing
 SRC = os.environ.get("MIG_SRC", "fixtures/pre_migration.db")
 DST = os.environ.get("MIG_DST", "banking.db")
 TMP_DST = os.environ.get("MIG_TMP", "banking.db.tmp")
@@ -14,23 +13,46 @@ def cents(v) -> int:
         raise ValueError(f"Sub-cent value detected: {v}")
     return int(d.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
+def validate_paths():
+    src_path = os.path.realpath(SRC)
+    dst_path = os.path.realpath(DST)
+    tmp_path = os.path.realpath(TMP_DST)
+    bak_path = os.path.realpath(BAK)
+    bak_tmp_path = os.path.realpath(BAK + ".new")
+
+    paths = {src_path, dst_path, tmp_path, bak_path, bak_tmp_path}
+    if len(paths) != 5:
+        raise ValueError("All migration and backup paths must be distinct.")
+    
+    if os.path.dirname(dst_path) != os.path.dirname(tmp_path):
+        raise ValueError("Temporary database must be in the destination directory.")
+        
+    if os.path.dirname(bak_path) != os.path.dirname(bak_tmp_path):
+        raise ValueError("Backup temporary file must share the backup directory.")
+
 def run_migration():
+    validate_paths()
+
     if not os.path.exists(SRC):
         raise FileNotFoundError(f"Source database not found: {SRC}")
     
     if os.path.exists(TMP_DST): 
         os.remove(TMP_DST)
     
-    src = sqlite3.connect(f"file:{SRC}?mode=ro", uri=True)
-    src.row_factory = sqlite3.Row
-    
-    dst = sqlite3.connect(TMP_DST, isolation_level=None)
-    dst.row_factory = sqlite3.Row
-    dst.execute("PRAGMA foreign_keys = ON;")
-
+    src = None
+    dst = None
     transaction_active = False
+    migration_successful = False
 
     try:
+        src = sqlite3.connect(f"file:{SRC}?mode=ro", uri=True)
+        src.row_factory = sqlite3.Row
+        src.execute("BEGIN;")
+        
+        dst = sqlite3.connect(TMP_DST, isolation_level=None)
+        dst.row_factory = sqlite3.Row
+        dst.execute("PRAGMA foreign_keys = ON;")
+
         dst.execute("BEGIN IMMEDIATE;")
         transaction_active = True
         
@@ -76,8 +98,8 @@ def run_migration():
                         (acc_id, bal_cents, row["status"], op_cents, row["customer_id"], row["created_at"]))
 
         for row in src.execute("SELECT * FROM ledger ORDER BY tx_id"):
-            dst.execute("INSERT INTO ledger (account_id,amount,type,related_account_id,timestamp,description) VALUES (?,?,?,?,?,?)",
-                        (row["account_id"], cents(row["amount"]), row["type"],
+            dst.execute("INSERT INTO ledger (tx_id, account_id, amount, type, related_account_id, timestamp, description) VALUES (?,?,?,?,?,?,?)",
+                        (row["tx_id"], row["account_id"], cents(row["amount"]), row["type"],
                          row["related_account_id"], row["timestamp"], row["description"]))
 
         dst.execute("INSERT INTO schema_version VALUES (?,?,?)",
@@ -91,31 +113,44 @@ def run_migration():
         dst.execute("COMMIT;")
         transaction_active = False
         
-        # Post-commit integrity checks
         integrity = dst.execute("PRAGMA integrity_check;").fetchone()[0]
         fk_check = dst.execute("PRAGMA foreign_key_check;").fetchone()
         
         if integrity != "ok" or fk_check is not None:
             raise ValueError("SQLite integrity or foreign-key check failed.")
+            
+        migration_successful = True
 
-    except Exception as e:
-        if transaction_active:
-            dst.execute("ROLLBACK;")
-        if os.path.exists(TMP_DST):
-            os.remove(TMP_DST)
-        raise e
+    except Exception:
+        if transaction_active and dst:
+            try:
+                dst.execute("ROLLBACK;")
+            except Exception as rollback_err:
+                print(f"Warning: Rollback failed: {rollback_err}", file=sys.stderr)
+        raise
+
     finally:
-        src.close()
-        dst.close()
-
-    if os.path.exists(BAK): 
-        os.remove(BAK)
-    if os.path.exists(DST):
-        shutil.copy2(DST, BAK)
+        if dst: dst.close()
+        if src: src.close()
         
-    os.replace(TMP_DST, DST)
-    print(f"Migrated: {SRC} -> {DST}")
-    print("Schema:   2")
+        if not migration_successful and os.path.exists(TMP_DST):
+            try:
+                os.remove(TMP_DST)
+            except Exception as e:
+                print(f"Warning: Failed to remove temp file: {e}", file=sys.stderr)
+
+    if migration_successful:
+        # Atomic backup preservation
+        if os.path.exists(DST):
+            bak_tmp = BAK + ".new"
+            shutil.copy2(DST, bak_tmp)
+            if os.path.exists(BAK):
+                os.remove(BAK)
+            os.replace(bak_tmp, BAK)
+            
+        os.replace(TMP_DST, DST)
+        print(f"Migrated: {SRC} -> {DST}")
+        print("Schema:   2")
 
 if __name__ == "__main__":
     run_migration()
