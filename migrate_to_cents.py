@@ -1,11 +1,12 @@
-import sqlite3, os, shutil, sys
+import sqlite3, os, shutil
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
-SRC = "fixtures/pre_migration.db"
-DST = "banking.db"
-TMP_DST = "banking.db.tmp"
-BAK = "fixtures/pre_migration_backup.db"
+# Allow overriding paths for isolated testing
+SRC = os.environ.get("MIG_SRC", "fixtures/pre_migration.db")
+DST = os.environ.get("MIG_DST", "banking.db")
+TMP_DST = os.environ.get("MIG_TMP", "banking.db.tmp")
+BAK = os.environ.get("MIG_BAK", "fixtures/pre_migration_backup.db")
 
 def cents(v) -> int:
     d = Decimal(str(v)) * Decimal("100")
@@ -20,19 +21,19 @@ def run_migration():
     if os.path.exists(TMP_DST): 
         os.remove(TMP_DST)
     
-    # Read-only source connection
     src = sqlite3.connect(f"file:{SRC}?mode=ro", uri=True)
     src.row_factory = sqlite3.Row
     
-    # Explicit transaction control for destination
     dst = sqlite3.connect(TMP_DST, isolation_level=None)
     dst.row_factory = sqlite3.Row
     dst.execute("PRAGMA foreign_keys = ON;")
 
+    transaction_active = False
+
     try:
         dst.execute("BEGIN IMMEDIATE;")
+        transaction_active = True
         
-        # P1 Fix: Use execute() instead of executescript() to maintain the transaction
         dst.execute("""
             CREATE TABLE accounts (
                 account_id      TEXT PRIMARY KEY,
@@ -63,7 +64,6 @@ def run_migration():
             );
         """)
 
-        # P3 Fix: Track expected balances for conservation check
         expected_balances = {}
 
         for row in src.execute("SELECT * FROM accounts"):
@@ -83,15 +83,15 @@ def run_migration():
         dst.execute("INSERT INTO schema_version VALUES (?,?,?)",
                     (2, datetime.now(timezone.utc).isoformat(timespec="seconds"), "integer-cents migration"))
         
-        # P3 Fix: Verify identities and converted financial values before commit
         for acc_id, expected_bal in expected_balances.items():
             actual = dst.execute("SELECT balance FROM accounts WHERE account_id = ?", (acc_id,)).fetchone()
             if not actual or actual["balance"] != expected_bal:
-                raise ValueError(f"Conservation check failed for {acc_id}: expected {expected_bal}, got {actual['balance'] if actual else 'MISSING'}")
+                raise ValueError(f"Conservation check failed for {acc_id}")
 
         dst.execute("COMMIT;")
+        transaction_active = False
         
-        # SQLite integrity check
+        # Post-commit integrity checks
         integrity = dst.execute("PRAGMA integrity_check;").fetchone()[0]
         fk_check = dst.execute("PRAGMA foreign_key_check;").fetchone()
         
@@ -99,23 +99,22 @@ def run_migration():
             raise ValueError("SQLite integrity or foreign-key check failed.")
 
     except Exception as e:
-        dst.execute("ROLLBACK;")
+        if transaction_active:
+            dst.execute("ROLLBACK;")
         if os.path.exists(TMP_DST):
             os.remove(TMP_DST)
         raise e
-
     finally:
         src.close()
         dst.close()
 
-    # P2 Fix: Backup existing destination, then atomically replace (no os.remove)
     if os.path.exists(BAK): 
         os.remove(BAK)
     if os.path.exists(DST):
         shutil.copy2(DST, BAK)
         
     os.replace(TMP_DST, DST)
-    print("Migrated:", SRC, "->", DST)
+    print(f"Migrated: {SRC} -> {DST}")
     print("Schema:   2")
 
 if __name__ == "__main__":
