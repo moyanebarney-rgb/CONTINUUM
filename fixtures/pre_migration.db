@@ -1,0 +1,64 @@
+import os
+import sys
+import subprocess
+import sqlite3
+from pathlib import Path
+
+print("=== G2: MIGRATION EXECUTION ===")
+
+# 1. Execute the migration
+print("\n[STEP 1] Running migrate_to_cents.py...")
+env = os.environ.copy()
+env["MIG_SRC"] = "fixtures/pre_migration.db"
+env["MIG_DST"] = "banking.db"
+env["MIG_TMP"] = "banking.db.tmp"
+env["MIG_BAK"] = "fixtures/pre_migration_backup.db"
+
+result = subprocess.run([sys.executable, "migrate_to_cents.py"], env=env, capture_output=True, text=True)
+
+print(f"Exit Code: {result.returncode}")
+print(f"STDOUT:\n{result.stdout.strip()}")
+if result.stderr:
+    print(f"STDERR:\n{result.stderr.strip()}")
+
+if result.returncode != 0:
+    print("\n❌ G2 BLOCKED: Migration failed.")
+    sys.exit(1)
+
+# 2. Verify the destination artifact exists
+print("\n[STEP 2] Checking destination database...")
+dst_path = Path("banking.db")
+if not dst_path.exists():
+    print(f"❌ G2 BLOCKED: Destination {dst_path} was not created.")
+    sys.exit(1)
+print(f"✅ Destination found: {dst_path.resolve()} ({dst_path.stat().st_size} bytes)")
+
+# 3. Inspect the destination schema
+print("\n[STEP 3] Inspecting destination schema...")
+conn = sqlite3.connect(dst_path)
+conn.row_factory = sqlite3.Row
+
+# Check types (must be INTEGER)
+types = conn.execute("SELECT typeof(balance) FROM accounts LIMIT 1").fetchone()[0]
+print(f"Accounts.balance type: {types}")
+if types != "integer":
+    print("❌ FAILED: balance is not INTEGER")
+    sys.exit(1)
+
+# Check triggers (Must be append-only)
+triggers = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'")]
+print(f"Triggers found: {triggers}")
+if "prevent_ledger_update" not in triggers or "prevent_ledger_delete" not in triggers:
+    print("❌ FAILED: Missing append-only triggers")
+    sys.exit(1)
+
+# Check tx_id preservation (Must not be auto-incremented)
+tx_ids = [r[0] for r in conn.execute("SELECT tx_id FROM ledger ORDER BY tx_id")]
+print(f"Transaction IDs: {tx_ids}")
+if tx_ids != [1, 2, 3, 4, 5, 6]:
+    print("❌ FAILED: Transaction IDs were not preserved correctly.")
+    sys.exit(1)
+
+conn.close()
+
+print("\n✅ G2 PASSED: Migration executed, schema is correct, triggers exist, and IDs are preserved.")
