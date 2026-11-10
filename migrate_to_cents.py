@@ -176,7 +176,7 @@ def migrate():
 if __name__ == "__main__":
     try:
         migrate()
-    except Exception as exc:
+    except  as exc:
         print(f"\n[FAILURE] Migration aborted: {exc}")
         if TMP.exists():
             print("Cleaning up partial temporary database...")
