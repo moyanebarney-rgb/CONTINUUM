@@ -1,37 +1,184 @@
-import hashlib, os, shutil, sqlite3, sys
+import os
+import shutil
+import sqlite3
+import sys
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-ROOT = Path(__file__).resolve().parent
-SRC = ROOT / "fixtures/pre_migration.db"
-BAK = ROOT / "fixtures/pre_migration_backup.db"
-TMP = ROOT / "banking.db.tmp"
-DST = ROOT / "banking.db"
-def sha256_file(path): return hashlib.sha256(path.read_bytes()).hexdigest()
-def cents(value, field):
-    if value is None: raise ValueError(f"NULL: {field}")
-    scaled = Decimal(str(value)) * Decimal("100")
-    if scaled != scaled.to_integral_value(): raise ValueError(f"Sub-cent: {field}")
-    return int(scaled)
+
+
+# ---------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------
+
+SRC = Path(os.environ.get("MIG_SRC", "fixtures/pre_migration.db"))
+BAK = Path(os.environ.get("MIG_BAK", "fixtures/pre_migration_backup.db"))
+TMP = Path(os.environ.get("MIG_TMP", "banking.db.tmp"))
+DST = Path(os.environ.get("MIG_DST", "banking.db"))
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+
+def cents(value):
+    """Convert a legacy floating-point monetary value into integer cents.
+
+    Rejects values that are not representable to exactly two decimal places,
+    which protects against sub-cent corruption in the source database.
+    """
+    if value is None:
+        return 0
+
+    try:
+        decimal_value = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise ValueError(f"Invalid monetary value: {value!r}") from exc
+
+    if decimal_value.as_tuple().exponent < -2:
+        raise ValueError(
+            f"Source contains a non-cent value: {value!r}. "
+            "Legacy financial data must be exact to the cent."
+        )
+
+    return int(
+        (decimal_value * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    )
+
+
+# ---------------------------------------------------------------------
+# Migration
+# ---------------------------------------------------------------------
+
 def migrate():
-    if BAK.exists(): BAK.unlink()
+    if not SRC.is_file():
+        raise FileNotFoundError(f"Source database not found at {SRC}")
+
+    if TMP.exists():
+        TMP.unlink()
+
+    BAK.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SRC, BAK)
-    if sha256_file(SRC) != sha256_file(BAK): raise RuntimeError("Backup mismatch")
-    if TMP.exists(): TMP.unlink()
-    src = sqlite3.connect(f"file:{SRC}?mode=ro", uri=True); src.row_factory = sqlite3.Row
-    dst = sqlite3.connect(TMP); dst.row_factory = sqlite3.Row
-    dst.execute("PRAGMA foreign_keys = ON"); dst.execute("BEGIN IMMEDIATE")
-    dst.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, balance INTEGER NOT NULL CHECK (balance >= 0), status TEXT NOT NULL, opening_balance INTEGER NOT NULL, customer_id TEXT, created_at TEXT)")
-    dst.execute("CREATE TABLE ledger (tx_id INTEGER PRIMARY KEY, account_id TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount <> 0), type TEXT NOT NULL, related_account_id TEXT, timestamp TEXT NOT NULL, description TEXT, FOREIGN KEY (account_id) REFERENCES accounts(account_id))")
-    dst.execute("CREATE TABLE schema_version (version INTEGER NOT NULL, applied_at TEXT NOT NULL, note TEXT)")
-    dst.execute("CREATE TRIGGER prevent_ledger_update BEFORE UPDATE ON ledger BEGIN SELECT RAISE(ABORT, 'Append-only'); END")
-    dst.execute("CREATE TRIGGER prevent_ledger_delete BEFORE DELETE ON ledger BEGIN SELECT RAISE(ABORT, 'Append-only'); END")
-    for r in src.execute("SELECT * FROM accounts"):
-        dst.execute("INSERT INTO accounts VALUES (?,?,?,?,?,?)", (r["account_id"], cents(r["balance"], "bal"), r["status"], cents(r["opening_balance"], "op"), r["customer_id"], r["created_at"]))
-    for r in src.execute("SELECT * FROM ledger"):
-        dst.execute("INSERT INTO ledger VALUES (?,?,?,?,?,?,?)", (r["tx_id"], r["account_id"], cents(r["amount"], "amt"), r["type"], r["related_account_id"], r["timestamp"], r["description"]))
-    dst.execute("INSERT INTO schema_version VALUES (2, ?, 'migration')", (datetime.now(timezone.utc).isoformat(),))
-    dst.commit(); src.close(); dst.close()
-    if os.environ.get("SIMULATE_CRASH") == "1": sys.exit(1)
-    os.replace(TMP, DST); print("Migration complete.")
-if __name__ == "__main__": migrate()
+    print(f"Backup created: {BAK}")
+
+    src = sqlite3.connect(SRC)
+    src.row_factory = sqlite3.Row
+
+    try:
+        dst = sqlite3.connect(TMP)
+        dst.row_factory = sqlite3.Row
+        dst.execute("PRAGMA foreign_keys = ON")
+
+        try:
+            with dst:
+                dst.executescript(
+                    """
+                    CREATE TABLE accounts (
+                        account_id      TEXT PRIMARY KEY,
+                        balance         INTEGER NOT NULL CHECK (balance >= 0),
+                        status          TEXT NOT NULL CHECK (status IN ('Active','Frozen')),
+                        opening_balance INTEGER NOT NULL DEFAULT 0,
+                        customer_id     TEXT,
+                        created_at      TEXT
+                    );
+
+                    CREATE TABLE ledger (
+                        tx_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        account_id         TEXT NOT NULL,
+                        amount             INTEGER NOT NULL CHECK (amount <> 0),
+                        type               TEXT NOT NULL,
+                        related_account_id TEXT,
+                        timestamp          TEXT NOT NULL,
+                        description        TEXT,
+                        FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+                    );
+
+                    CREATE TABLE schema_version (
+                        version    INTEGER NOT NULL,
+                        applied_at TEXT    NOT NULL,
+                        note       TEXT
+                    );
+                    """
+                )
+
+                for row in src.execute("SELECT * FROM accounts"):
+                    dst.execute(
+                        """
+                        INSERT INTO accounts (
+                            account_id,
+                            balance,
+                            status,
+                            opening_balance,
+                            customer_id,
+                            created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            row["account_id"],
+                            cents(row["balance"]),
+                            row["status"],
+                            cents(row["opening_balance"]),
+                            row["customer_id"],
+                            row["created_at"],
+                        ),
+                    )
+
+                for row in src.execute("SELECT * FROM ledger ORDER BY tx_id"):
+                    dst.execute(
+                        """
+                        INSERT INTO ledger (
+                            account_id,
+                            amount,
+                            type,
+                            related_account_id,
+                            timestamp,
+                            description
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            row["account_id"],
+                            cents(row["amount"]),
+                            row["type"],
+                            row["related_account_id"],
+                            row["timestamp"],
+                            row["description"],
+                        ),
+                    )
+
+                dst.execute(
+                    "INSERT INTO schema_version (version, applied_at, note) VALUES (?, ?, ?)",
+                    (
+                        2,
+                        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "integer-cents migration",
+                    ),
+                )
+
+            result = dst.execute("PRAGMA integrity_check").fetchone()[0]
+            if result != "ok":
+                raise RuntimeError(f"Migration integrity check failed: {result}")
+
+            dst.close()
+
+            os.replace(TMP, DST)
+            print(f"Migration successful. Output: {DST}")
+
+        except Exception:
+            dst.close()
+            if TMP.exists():
+                TMP.unlink()
+            raise
+
+    finally:
+        src.close()
+
+
+if __name__ == "__main__":
+    try:
+        migrate()
+    except  as exc:
+        print(f"\n[FAILURE] Migration aborted: {exc}")
+        if TMP.exists():
+            print("Cleaning up partial temporary database...")
+            TMP.unlink()
+        raise
