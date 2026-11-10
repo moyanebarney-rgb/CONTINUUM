@@ -1,0 +1,129 @@
+Tue Nov 10 14:12:21 UTC 2026
+0c7c65cecd7f4994e77b773ef2c829811d38333d
+Python 3.14.2
+SQLite 3.45.1
+--- RUNNING BUILD FIXTURE ---
+FIXTURE BUILD FAILED
+FileExistsError: Fixture already exists: /workspaces/CONTINUUM/fixtures/pre_migration.db
+Existing data has been preserved. Choose a new output filename or investigate the existing fixture.
+Traceback (most recent call last):
+  File "/workspaces/CONTINUUM/build_fixture.py", line 288, in <module>
+    build_fixture()
+    ~~~~~~~~~~~~~^^
+  File "/workspaces/CONTINUUM/build_fixture.py", line 170, in build_fixture
+    raise FileExistsError(
+    ...<3 lines>...
+    )
+FileExistsError: Fixture already exists: /workspaces/CONTINUUM/fixtures/pre_migration.db
+Existing data has been preserved. Choose a new output filename or investigate the existing fixture.
+--- RUNNING MIGRATION ---
+Backup created: fixtures/pre_migration_backup.db
+Migration successful. Output: banking.db
+--- RUNNING VERIFIER ---
+PASS  MIG-STR  structural: tables present   expected=      True actual=      True
+PASS  MIG-TYP  balance column is INTEGER    expected= 'integer' actual= 'integer'
+PASS  MIG-ACC  account count                expected=         3 actual=         3
+PASS  MIG-LGR  ledger count                 expected=         6 actual=         6
+PASS  MIG-ACC-A convert ACC-A                expected=    125000 actual=    125000
+PASS  MIG-ACC-B convert ACC-B                expected=     50000 actual=     50000
+PASS  MIG-ACC-C convert ACC-C                expected=         0 actual=         0
+PASS  MIG-TOT  total value (cents)          expected=    175000 actual=    175000
+PASS  REC-ACC-A reconcile ACC-A              expected=    125000 actual=    125000
+PASS  REC-ACC-B reconcile ACC-B              expected=     50000 actual=     50000
+PASS  REC-ACC-C reconcile ACC-C              expected=         0 actual=         0
+PASS  MIG-SCH  schema version               expected=         2 actual=         2
+
+MIGRATION GATE: PASS
+SHA-256:        1d9e8a0df51e22f8cae0829cc12cc7553b388619021798f0e1b242bfac620524
+--- RUNNING FAILURE TEST ---
+=================================================================
+CONTINUUM — MIGRATION FAILURE TESTS
+=================================================================
+
+Isolated test directory: /tmp/tmpwtkvosug
+
+--- TEST 1: PRE-MIGRATION FAILURE ---
+Scenario: Missing source database
+Return code: 1
+
+STDOUT:
+
+[FAILURE] Migration aborted: Source database not found at /tmp/tmpwtkvosug/missing_source.db
+
+
+STDERR:
+Traceback (most recent call last):
+  File "/workspaces/CONTINUUM/migrate_to_cents.py", line 178, in <module>
+    migrate()
+    ~~~~~~~^^
+  File "/workspaces/CONTINUUM/migrate_to_cents.py", line 55, in migrate
+    raise FileNotFoundError(f"Source database not found at {SRC}")
+FileNotFoundError: Source database not found at /tmp/tmpwtkvosug/missing_source.db
+
+
+TEST 1: PASS
+Original destination preserved.
+Migration exited unsuccessfully as expected.
+
+--- TEST 2: MID-MIGRATION FAILURE ---
+Scenario: Source contains a sub-cent monetary value
+Return code: 1
+
+STDOUT:
+Backup created: /tmp/tmpwtkvosug/corrupt_backup.db
+
+[FAILURE] Migration aborted: Source contains a non-cent value: 10.005. Legacy financial data must be exact to the cent.
+
+
+STDERR:
+Traceback (most recent call last):
+  File "/workspaces/CONTINUUM/migrate_to_cents.py", line 178, in <module>
+    migrate()
+    ~~~~~~~^^
+  File "/workspaces/CONTINUUM/migrate_to_cents.py", line 118, in migrate
+    cents(row["balance"]),
+    ~~~~~^^^^^^^^^^^^^^^^
+  File "/workspaces/CONTINUUM/migrate_to_cents.py", line 39, in cents
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Source contains a non-cent value: 10.005. Legacy financial data must be exact to the cent.
+
+
+TEST 2: PASS
+Invalid monetary data rejected.
+Original destination preserved.
+Original source preserved.
+Temporary migration file cleaned up.
+
+--- TEST 3: SUCCESSFUL MIGRATION ---
+Scenario: Valid source database
+Return code: 0
+
+STDOUT:
+Backup created: /tmp/tmpwtkvosug/valid_backup.db
+Migration successful. Output: /tmp/tmpwtkvosug/valid_destination.db
+
+
+STDERR:
+(empty)
+Independent database inspection: PASS
+Account: TEST-001
+Balance: 100000 cents
+Opening balance: 0 cents
+Transaction ID: 1
+Transaction amount: 100000 cents
+Financial reconciliation: PASS
+SQLite integrity: PASS
+Foreign-key check: PASS
+
+TEST 3: PASS
+Valid migration completed.
+Original source preserved.
+Migrated database independently inspected.
+
+=================================================================
+MIGRATION FAILURE TEST SUITE: PASS
+Tests passed: 3
+Tests failed: 0
+=================================================================
